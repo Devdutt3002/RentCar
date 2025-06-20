@@ -47,6 +47,7 @@ import UsersManager from "./admin/users-manager/users-manager";
 import LocationsManager from "./admin/locations-manager/locations-manager";
 import RentalsManager from "./admin/rentals-manager/rentals-manager";
 import ContactFormManager from "./admin/contact-form-manager/contact-form-manager";
+import UserDetails from "./pages/auth/user-details";
 
 function App() {
 
@@ -86,6 +87,7 @@ function App() {
                   <Route path="/my-rentals" element={<AuthGuard><MyRentals /></AuthGuard>} />
 
                   <Route path="/cars/:carBrand/:carModel/:carId" element={<CarDetail />} />
+                  <Route path="/user-details" element={<UserDetails />} />
                 </Routes>
                 <Footer />
               </Router>

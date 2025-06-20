@@ -2,11 +2,12 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, redirect } from "react-router-dom";
 import Swal from 'sweetalert2'
 
-import { Container, Row, Col, Form, ListGroup, InputGroup, Button, Spinner } from 'react-bootstrap';
+import { Container, Row, Col, Form, ListGroup, InputGroup, Button, Spinner, Card, Modal } from 'react-bootstrap';
 
 import { TbEngine, TbManualGearbox } from "react-icons/tb";
 import { BsCarFront, BsFillCarFrontFill, BsFillFuelPumpFill } from "react-icons/bs";
 import { PiEngineFill } from "react-icons/pi";
+import { FaCreditCard, FaPhoneAlt } from 'react-icons/fa';
 
 import { useDispatch, useSelector } from "react-redux";
 import { makeReservation, reserveNow } from "../redux/features/ReserveSlice";
@@ -24,6 +25,7 @@ const CarDetail = () => {
 
     const dispatch = useDispatch();
     const user = useSelector(({ UserSlice }) => UserSlice.user);
+    const reserveButtonRef = useRef(null);
 
     const { carBrand, carModel, carId } = useParams();
     const navigate = useNavigate();
@@ -33,12 +35,23 @@ const CarDetail = () => {
     const [models, setModels] = useState(null);
     const [locations, setLocations] = useState(null);
 
-    const [selectedLocations, setSelectedLocations] = useState({ pickup: "", dropoff: "" });
+    const [selectedLocation, setSelectedLocation] = useState("");
     const [rentDate, setRentDate] = useState({ start: getDateByInputFormat(), end: getDateByInputFormat(1) });
     const [calculatedPrice, setCalculatedPrice] = useState(null);
 
     const [isReservationTimerEnable, setIsReservationTimerEnable] = useState(true);
     const [reservationTimer, setReservationTimer] = useState(300); //in seconds
+
+    const [showPaymentModal, setShowPaymentModal] = useState(false);
+    const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('');
+    const [paymentDetails, setPaymentDetails] = useState({
+        cardNumber: '',
+        cardName: '',
+        expiryDate: '',
+        cvv: '',
+        phoneNumber: ''
+    });
+    const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
     useEffect(() => {
 
@@ -122,7 +135,153 @@ const CarDetail = () => {
         return totalPrice;
     };
 
-    const handleReserveButtonClick = async event => {
+    const handlePaymentMethodSelect = (method) => {
+        setSelectedPaymentMethod(method);
+        setPaymentDetails({
+            cardNumber: '',
+            cardName: '',
+            expiryDate: '',
+            cvv: '',
+            phoneNumber: ''
+        });
+    };
+
+    const simulatePayment = async () => {
+        setIsProcessingPayment(true);
+        // Simulate API call
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        setIsProcessingPayment(false);
+        return true; // Simulate successful payment
+    };
+
+    const handlePaymentSubmit = async () => {
+        if (!selectedPaymentMethod) {
+            Swal.fire({
+                title: 'Error',
+                text: 'Please select a payment method',
+                icon: 'error'
+            });
+            return;
+        }
+
+        // Validate payment details based on selected method
+        if (selectedPaymentMethod === 'card' && (!paymentDetails.cardNumber || !paymentDetails.cardName || !paymentDetails.expiryDate || !paymentDetails.cvv)) {
+            Swal.fire({
+                title: 'Error',
+                text: 'Please fill in all card details',
+                icon: 'error'
+            });
+            return;
+        }
+
+        if (selectedPaymentMethod === 'phone') {
+            if (!paymentDetails.phoneNumber) {
+                Swal.fire({
+                    title: 'Error',
+                    text: 'Please enter your phone number',
+                    icon: 'error'
+                });
+                return;
+            }
+            
+            // Validate phone number format (10 digits)
+            const phoneRegex = /^\d{10}$/;
+            if (!phoneRegex.test(paymentDetails.phoneNumber)) {
+                Swal.fire({
+                    title: 'Invalid Phone Number',
+                    text: 'Please enter a valid 10-digit phone number',
+                    icon: 'error'
+                });
+                return;
+            }
+        }
+
+        try {
+            const paymentSuccess = await simulatePayment();
+            if (paymentSuccess) {
+                setShowPaymentModal(false);
+                // Continue with reservation
+                await processReservation();
+            }
+        } catch (error) {
+            Swal.fire({
+                title: 'Payment Failed',
+                text: 'There was an error processing your payment. Please try again.',
+                icon: 'error'
+            });
+        }
+    };
+
+    const processReservation = async () => {
+        // Disable the button using ref
+        if (reserveButtonRef.current) {
+            reserveButtonRef.current.disabled = true;
+        }
+        setIsReservationTimerEnable(false);
+
+        const reservationData = {
+            reservationOwner: user.email,
+            carId: parseInt(carId) || 0,
+            carBrand: carBrand,
+            carModel: carModel,
+            startDate: rentDate.start,
+            endDate: rentDate.end,
+            location: selectedLocation,
+            locationDetails: (() => {
+                const [cityId, branchId] = selectedLocation.split('-');
+                const city = locations[cityId] || {};
+                const branch = city.branches ? city.branches[branchId] || {} : {};
+                return {
+                    cityId,
+                    cityName: city.name || '',
+                    branchId,
+                    branchName: branch.name || '',
+                    address: branch.address || '',
+                    pinCode: branch.pinCode || '',
+                    phone: branch.phone || '',
+                    email: branch.email || ''
+                };
+            })(),
+            totalPrice: calculatedPrice,
+            termsAccepted: true,
+            termsAcceptedDate: new Date().toISOString(),
+            paymentDetails: {
+                method: selectedPaymentMethod,
+                amount: calculatedPrice,
+                status: 'completed',
+                date: new Date().toISOString()
+            }
+        }
+
+        const carsClone = Object.assign({}, cars);
+        carsClone[carId].carCount = carsClone[carId].carCount - 1;
+
+        try {
+            await setDoc(doc(db, "vehicle", "cars"), carsClone);
+            await addDoc(collection(db, "rentals"), reservationData);
+
+            await Swal.fire(
+                'Reservation Completed!',
+                'Car has been reserved for you!',
+                'success'
+            );
+            
+            navigate('/my-rentals');
+        } catch (err) {
+            console.error(err);
+            await Swal.fire({
+                icon: "error",
+                title: "Oops...",
+                text: "Something went wrong!"
+            });
+            if (reserveButtonRef.current) {
+                reserveButtonRef.current.disabled = false;
+            }
+            setIsReservationTimerEnable(true);
+        }
+    };
+
+    const handleReserveButtonClick = async () => {
         if (!calculatedPrice) {
             Swal.fire({ 
                 title: "Please calculate the price first!", 
@@ -132,7 +291,6 @@ const CarDetail = () => {
         }
 
         if (!user.email) {
-
             Swal.fire({
                 title: "You have to log in",
                 text: "Please log in for reservation",
@@ -143,67 +301,80 @@ const CarDetail = () => {
                     navigate("/login")
                 }
             });
+            return;
         }
-        else {
 
-            if (Object.values(selectedLocations).some(value => value === "")) {
-
-                let resultContent = Object.values(selectedLocations).every(value => value === "")
-                    ? "Please choose locations!"
-                    : selectedLocations.pickup === ""
-                        ? "Please choose pick-up location!"
-                        : "Please choose drop-off location!"
-
-                Swal.fire({ title: resultContent, icon: "warning" });
-
+        if (selectedLocation === "") {
+            Swal.fire({ title: "Please choose a rental location!", icon: "warning" });
                 return;
             }
 
-            event.currentTarget.disabled = true;
-            setIsReservationTimerEnable(false);
+        // Show terms and conditions popup
+        const termsResult = await Swal.fire({
+            title: 'Terms and Conditions',
+            html: `
+                <div style="text-align: left; max-height: 300px; overflow-y: auto; padding: 10px;">
+                    <h4>Car Rental Terms and Conditions</h4>
+                    
+                    <h5>1. Driver Requirements</h5>
+                    <ul>
+                        <li>Must be at least 21 years old</li>
+                        <li>Must have a valid driver's license</li>
+                        <li>Must have a clean driving record</li>
+                    </ul>
 
-            const reservationData = {
-                reservationOwner: user.email,
-                carId: parseInt(carId) || 0,
-                carBrand: carBrand,
-                carModel: carModel,
-                startDate: rentDate.start,
-                endDate: rentDate.end,
-                pickupLocation: parseInt(selectedLocations.pickup) || 0,
-                dropoffLocation: parseInt(selectedLocations.dropoff) || 0,
-                totalPrice: calculatedPrice
-            }
+                    <h5>2. Payment and Fees</h5>
+                    <ul>
+                        <li>Full payment required at time of reservation</li>
+                        <li>Security deposit required</li>
+                        <li>Additional fees for late returns</li>
+                    </ul>
 
-            const carsClone = Object.assign({}, cars);
-            carsClone[carId].carCount = carsClone[carId].carCount - 1;
+                    <h5>3. Vehicle Use</h5>
+                    <ul>
+                        <li>Vehicle must be used only for intended purpose</li>
+                        <li>No smoking in the vehicle</li>
+                        <li>No unauthorized drivers</li>
+                    </ul>
 
-            setDoc(doc(db, "vehicle", "cars"), carsClone);
-            addDoc(collection(db, "rentals"), reservationData)
-                .then(() => {
+                    <h5>4. Insurance</h5>
+                    <ul>
+                        <li>Basic insurance included</li>
+                        <li>Additional coverage available</li>
+                        <li>Customer responsible for damages not covered</li>
+                    </ul>
 
-                    Swal.fire(
-                        'Reservation Completed!',
-                        'Car has been reserved for you!',
-                        'success'
-                    )
-                })
-                .catch(err => {
-                    console.log(err);
-                    Swal.fire({
-                        icon: "error",
-                        title: "Oops...",
-                        text: "Something went wrong!"
-                    });
-                });
+                    <h5>5. Cancellation Policy</h5>
+                    <ul>
+                        <li>Free cancellation up to 24 hours before pickup</li>
+                        <li>50% charge for cancellations within 24 hours</li>
+                        <li>No refund for no-shows</li>
+                    </ul>
 
+                    <h5>6. Vehicle Return</h5>
+                    <ul>
+                        <li>Vehicle must be returned with same fuel level</li>
+                        <li>Vehicle must be returned in clean condition</li>
+                        <li>Late returns subject to additional charges</li>
+                    </ul>
+                </div>
+            `,
+            icon: 'info',
+            showCancelButton: true,
+            confirmButtonColor: '#28a745',
+            cancelButtonColor: '#dc3545',
+            confirmButtonText: 'I Accept',
+            cancelButtonText: 'I Decline',
+            width: '600px'
+        });
 
-            // IT WAS USING BEFORE DATABASE USAGE (FOR GLOBAL STATE MANAGEMENT)
-            //
-            // dispatch(makeReservation(reservationData));
-            //
-            // NOT REQUIRED ANYMORE (BECAUSE RESERVATION DATA WILL FETCH FROM DB)
+        if (!termsResult.isConfirmed) {
+            return;
         }
-    }
+
+        // Show payment modal instead of processing reservation directly
+        setShowPaymentModal(true);
+    };
 
     return (
         <div id="car-detail" style={{ clear: "both" }}>
@@ -280,39 +451,42 @@ const CarDetail = () => {
                                         <Row>
                                             <Col xs={12} md={6}>
                                                 <Form.Group className="mb-3">
-                                                    <Form.Label>Pick-up Location</Form.Label>
+                                                    <Form.Label>Rental Location</Form.Label>
                                                     <Form.Select
-                                                        value={selectedLocations.pickup}
-                                                        onChange={e => setSelectedLocations(prev => ({ ...prev, pickup: e.target.value }))}
+                                                        value={selectedLocation}
+                                                        onChange={e => setSelectedLocation(e.target.value)}
                                                     >
-                                                        <option value="">Select Pick-up Location</option>
+                                                        <option value="">Select Rental Location</option>
                                                         {
-                                                            cars[carId].availableLocations.map(locationId =>
-                                                                <option key={`pickup_${locationId}`} value={locationId}>
-                                                                    {locations[locationId]}
+                                                            cars[carId].availableLocations.map(locationId => {
+                                                                const [cityId, branchId] = locationId.split('-');
+                                                                const city = locations[cityId] || {};
+                                                                const branch = city.branches ? city.branches[branchId] || {} : {};
+                                                                return (
+                                                                    <option key={`location_${locationId}`} value={locationId}>
+                                                                        {city.name || ''} - {branch.name || ''}
                                                                 </option>
-                                                            )
+                                                                );
+                                                            })
                                                         }
                                                     </Form.Select>
                                                 </Form.Group>
-                                            </Col>
-                                            <Col xs={12} md={6}>
-                                                <Form.Group className="mb-3">
-                                                    <Form.Label>Drop-off Location</Form.Label>
-                                                    <Form.Select
-                                                        value={selectedLocations.dropoff}
-                                                        onChange={e => setSelectedLocations(prev => ({ ...prev, dropoff: e.target.value }))}
-                                                    >
-                                                        <option value="">Select Drop-off Location</option>
-                                                        {
-                                                            cars[carId].availableLocations.map(locationId =>
-                                                                <option key={`dropoff_${locationId}`} value={locationId}>
-                                                                    {locations[locationId]}
-                                                                </option>
-                                                            )
-                                                        }
-                                                    </Form.Select>
-                                                </Form.Group>
+                                                {selectedLocation && (() => {
+                                                    const [cityId, branchId] = selectedLocation.split('-');
+                                                    const city = locations[cityId] || {};
+                                                    const branch = city.branches ? city.branches[branchId] || {} : {};
+                                                    return branch.name ? (
+                                                        <Card className="mt-2">
+                                                            <Card.Body>
+                                                                <h5>Branch Details</h5>
+                                                                <p className="mb-1"><strong>Address:</strong> {branch.address || 'N/A'}</p>
+                                                                <p className="mb-1"><strong>PIN Code:</strong> {branch.pinCode || 'N/A'}</p>
+                                                                <p className="mb-1"><strong>Phone:</strong> {branch.phone || 'N/A'}</p>
+                                                                <p className="mb-1"><strong>Email:</strong> {branch.email || 'N/A'}</p>
+                                                            </Card.Body>
+                                                        </Card>
+                                                    ) : null;
+                                                })()}
                                             </Col>
                                         </Row>
                                         <Row>
@@ -367,6 +541,7 @@ const CarDetail = () => {
                                         <Row>
                                             <Col>
                                                 <Button
+                                                    ref={reserveButtonRef}
                                                     variant="success"
                                                     className="w-100"
                                                     onClick={handleReserveButtonClick}
@@ -384,6 +559,138 @@ const CarDetail = () => {
                         loadingContent
                 }
             </Container>
+
+            {/* Payment Modal */}
+            <Modal show={showPaymentModal} onHide={() => setShowPaymentModal(false)} size="lg">
+                <Modal.Header closeButton>
+                    <Modal.Title>Payment Details</Modal.Title>
+                </Modal.Header>
+                <Modal.Body>
+                    <div className="mb-4">
+                        <h5>Select Payment Method</h5>
+                        <div className="d-flex gap-3">
+                            <Button
+                                variant={selectedPaymentMethod === 'card' ? 'primary' : 'outline-primary'}
+                                className="d-flex align-items-center gap-2"
+                                onClick={() => handlePaymentMethodSelect('card')}
+                            >
+                                <FaCreditCard /> Credit Card
+                            </Button>
+                            <Button
+                                variant={selectedPaymentMethod === 'phone' ? 'primary' : 'outline-primary'}
+                                className="d-flex align-items-center gap-2"
+                                onClick={() => handlePaymentMethodSelect('phone')}
+                            >
+                                <FaPhoneAlt /> Phone Payment
+                            </Button>
+                        </div>
+                    </div>
+
+                    {selectedPaymentMethod === 'card' && (
+                        <div className="payment-form">
+                            <Form.Group className="mb-3">
+                                <Form.Label>Card Number</Form.Label>
+                                <Form.Control
+                                    type="text"
+                                    placeholder="1234 5678 9012 3456"
+                                    value={paymentDetails.cardNumber}
+                                    onChange={(e) => setPaymentDetails(prev => ({ ...prev, cardNumber: e.target.value }))}
+                                    maxLength={19}
+                                />
+                            </Form.Group>
+                            <Form.Group className="mb-3">
+                                <Form.Label>Cardholder Name</Form.Label>
+                                <Form.Control
+                                    type="text"
+                                    placeholder="John Doe"
+                                    value={paymentDetails.cardName}
+                                    onChange={(e) => setPaymentDetails(prev => ({ ...prev, cardName: e.target.value }))}
+                                />
+                            </Form.Group>
+                            <Row>
+                                <Col md={6}>
+                                    <Form.Group className="mb-3">
+                                        <Form.Label>Expiry Date</Form.Label>
+                                        <Form.Control
+                                            type="text"
+                                            placeholder="MM/YY"
+                                            value={paymentDetails.expiryDate}
+                                            onChange={(e) => setPaymentDetails(prev => ({ ...prev, expiryDate: e.target.value }))}
+                                            maxLength={5}
+                                        />
+                                    </Form.Group>
+                                </Col>
+                                <Col md={6}>
+                                    <Form.Group className="mb-3">
+                                        <Form.Label>CVV</Form.Label>
+                                        <Form.Control
+                                            type="text"
+                                            placeholder="123"
+                                            value={paymentDetails.cvv}
+                                            onChange={(e) => setPaymentDetails(prev => ({ ...prev, cvv: e.target.value }))}
+                                            maxLength={4}
+                                        />
+                                    </Form.Group>
+                                </Col>
+                            </Row>
+                        </div>
+                    )}
+
+                    {selectedPaymentMethod === 'phone' && (
+                        <div className="payment-form">
+                            <Form.Group className="mb-3">
+                                <Form.Label>Phone Number</Form.Label>
+                                <Form.Control
+                                    type="tel"
+                                    placeholder="Enter 10-digit phone number"
+                                    value={paymentDetails.phoneNumber}
+                                    onChange={(e) => {
+                                        // Only allow digits and limit to 10 characters
+                                        const value = e.target.value.replace(/\D/g, '').slice(0, 10);
+                                        setPaymentDetails(prev => ({ ...prev, phoneNumber: value }));
+                                    }}
+                                    maxLength={10}
+                                    pattern="\d{10}"
+                                    title="Please enter a 10-digit phone number"
+                                />
+                                <Form.Text className="text-muted">
+                                    Enter a 10-digit phone number without spaces or special characters
+                                </Form.Text>
+                            </Form.Group>
+                        </div>
+                    )}
+
+                    <div className="text-center mt-4">
+                        <h4>Total Amount: ₹{calculatedPrice ? calculatedPrice.toLocaleString('en-IN') : '0'}</h4>
+                    </div>
+                </Modal.Body>
+                <Modal.Footer>
+                    <Button variant="secondary" onClick={() => setShowPaymentModal(false)}>
+                        Cancel
+                    </Button>
+                    <Button 
+                        variant="primary" 
+                        onClick={handlePaymentSubmit}
+                        disabled={isProcessingPayment}
+                    >
+                        {isProcessingPayment ? (
+                            <>
+                                <Spinner
+                                    as="span"
+                                    animation="border"
+                                    size="sm"
+                                    role="status"
+                                    aria-hidden="true"
+                                    className="me-2"
+                                />
+                                Processing...
+                            </>
+                        ) : (
+                            'Pay Now'
+                        )}
+                    </Button>
+                </Modal.Footer>
+            </Modal>
         </div>
     )
 };

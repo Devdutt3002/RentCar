@@ -23,14 +23,56 @@ const VehicleCars = () => {
     const [modelsByBrandId, setModelsByBrandId] = useState(null);
 
     const [locations, setLocations] = useState(null);
+    const [locationOptions, setLocationOptions] = useState([]);
 
     useEffect(() => {
-
         fetchBrands().then(response => setBrands(response));
         fetchModels().then(response => setModels(response));
         fetchCars().then(response => setCars(response));
-        fetchLocations().then(response => setLocations(response));
+        fetchLocations().then(response => {
+            console.log('Fetched locations in vehicle cars:', response);
+            if (!response || typeof response !== 'object') {
+                console.error('Invalid locations data received');
+                setLocations({});
+                setLocationOptions([]);
+                return;
+            }
 
+            setLocations(response);
+            // Transform locations data into options for the Select component
+            const options = [];
+            try {
+                Object.entries(response).forEach(([cityId, city]) => {
+                    console.log('Processing city:', cityId, city);
+                    if (city && typeof city === 'object' && city.name) {
+                        const cityName = city.name.trim();
+                        Object.entries(city.branches || {}).forEach(([branchId, branch]) => {
+                            console.log('Processing branch:', branchId, branch);
+                            if (branch && typeof branch === 'object' && branch.name) {
+                                options.push({
+                                    value: `${cityId}-${branchId}`,
+                                    label: `${cityName} - ${branch.name.trim()}`,
+                                    cityId,
+                                    branchId,
+                                    cityName,
+                                    branchName: branch.name.trim(),
+                                    address: branch.address || ''
+                                });
+                            }
+                        });
+                    }
+                });
+                console.log('Generated location options:', options);
+                setLocationOptions(options);
+            } catch (error) {
+                console.error('Error processing locations:', error);
+                setLocationOptions([]);
+            }
+        }).catch(error => {
+            console.error('Error fetching locations:', error);
+            setLocations({});
+            setLocationOptions([]);
+        });
     }, []);
 
     const handleBrandChange = e => {
@@ -373,8 +415,16 @@ const VehicleCars = () => {
                                                             <Select
                                                                 isMulti
                                                                 name="availableLocations"
-                                                                defaultValue={item.availableLocations && item.availableLocations.map(i => ({ label: locations[i], value: i }))}
-                                                                options={Object.entries(locations).map(([key, value]) => ({ label: value, value: key }))}
+                                                                defaultValue={item.availableLocations && item.availableLocations.map(loc => {
+                                                                    const [cityId, branchId] = loc.split('-');
+                                                                    const city = locations[cityId] || {};
+                                                                    const branch = city.branches ? city.branches[branchId] || {} : {};
+                                                                    return {
+                                                                        value: loc,
+                                                                        label: `${city.name || ''} - ${branch.name || ''}`
+                                                                    };
+                                                                })}
+                                                                options={locationOptions}
                                                                 className="react-select w-75"
                                                                 classNamePrefix="select"
                                                                 onChange={event => handleInputChange(event, index)}
@@ -492,7 +542,7 @@ const VehicleCars = () => {
                                                     <Select
                                                         isMulti
                                                         name="availableLocations"
-                                                        options={Object.entries(locations).map(([key, value]) => ({ label: value, value: key }))}
+                                                        options={locationOptions}
                                                         className="react-select w-75"
                                                         classNamePrefix="select"
                                                         required={true}

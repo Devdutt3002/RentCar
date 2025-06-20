@@ -20,10 +20,14 @@ const Signup = () => {
         e.preventDefault();
 
         try {
-            const signUp = await signUpCall({ email, password })
+            const { success } = await signUpCall({ email, password });
+            if (success) {
+                // Redirect to user details page after successful signup
+                navigate('/user-details');
+            }
         }
         catch (e) {
-
+            console.error("Signup error:", e);
         }
     }
 

@@ -46,7 +46,7 @@ const Footer = () => {
                   <p className="fs-6 text-white m-0">
                     <span>
                       <IoLocation className="header-line-2-icon" />&nbsp;
-                      <a href="https://www.google.com/maps/place/India/@26.6729087,73.6587937,6z/data=!4m6!3m5!1s0x30635ff06b92b791:0xd78c4fa1854213a6!8m2!3d20.593684!4d78.96288!16zL20vMDNyazA?entry=ttu&g_ep=EgoyMDI1MDIxMi4wIKXMDSoASAFQAw%3D%3D" target="_blank" className="text-white">New York</a>
+                      <a href="https://www.google.com/maps/place/India/@26.6729087,73.6587937,6z/data=!4m6!3m5!1s0x30635ff06b92b791:0xd78c4fa1854213a6!8m2!3d20.593684!4d78.96288!16zL20vMDNyazA?entry=ttu&g_ep=EgoyMDI1MDIxMi4wIKXMDSoASAFQAw%3D%3D" target="_blank" className="text-white">India</a>
                     </span>
                     <br />
                     <span>

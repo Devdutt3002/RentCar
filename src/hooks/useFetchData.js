@@ -60,15 +60,38 @@ const fetchCars = async () => {
 }
 
 const fetchLocations = async () => {
+    try {
+        const docRef = doc(db, "vehicle", "locations");
+        const docSnap = await getDoc(docRef);
 
-    const docRef = doc(db, "vehicle", "locations");
-    const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            console.log('Fetched locations data from Firebase:', data);
+            
+            // Validate data structure
+            if (typeof data !== 'object') {
+                console.error('Invalid locations data structure');
+                return {};
+            }
 
-    if (docSnap.exists()) {
-        console.log(docSnap.data())
-        return docSnap.data();
-    } else {
-        console.log("No such document (vehicle/locations)!");
+            // Ensure each city has required properties
+            const validatedData = {};
+            Object.entries(data).forEach(([cityId, city]) => {
+                if (city && typeof city === 'object' && city.name) {
+                    validatedData[cityId] = {
+                        name: city.name,
+                        branches: city.branches || {}
+                    };
+                }
+            });
+
+            return validatedData;
+        } else {
+            console.log("No locations document found in Firebase!");
+            return {};
+        }
+    } catch (error) {
+        console.error("Error fetching locations:", error);
         return {};
     }
 }

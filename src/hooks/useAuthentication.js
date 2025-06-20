@@ -84,9 +84,16 @@ const useAuthentication = () => {
                 createdAt: new Date().toISOString()
             };
 
-            await addDoc(collection(db, "users"), docData);
-
-            const userData = {...user, ...docData};
+            // Add the document and get its reference
+            const docRef = await addDoc(collection(db, "users"), docData);
+            
+            // Add the document ID to the user data
+            const userData = {...user, ...docData, id: docRef.id};
+            
+            // Store user data in localStorage
+            localStorage.setItem('user', JSON.stringify(userData));
+            
+            // Update Redux store
             dispatch(setUser(userData));
 
             setMessage({
@@ -96,7 +103,8 @@ const useAuthentication = () => {
 
             // Return both success status and user role for navigation
             return { success: true, role: docData.role };
-        } catch (err) {
+        }
+        catch (err) {
             console.error("Signup error:", err);
             
             let errorMessage = "An error occurred during signup. Please try again.";
